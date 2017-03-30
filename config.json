@@ -1,5 +1,0 @@
-{
-	"watch": ["E:\\Go\\test\\volume\\"],
-	"bricks": ["E:\\Go\\test\\brick1\\", "E:\\Go\\test\\brick2\\"],
-	"type": "Distribute"
-}
