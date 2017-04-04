@@ -4,6 +4,7 @@ import (
 	"log"
 	"github.com/BurntSushi/toml"
 	"io/ioutil"
+	"strings"
 )
 
 func check(m string, e error) {
@@ -33,12 +34,38 @@ func (s *Sources) readConf() *Sources {
         panic("Config file might be corrupt.")
     }
 
-    fmt.Printf("tot: %v atat\n", s)
-    fmt.Println("ln", s.Sync[0].Source)
- 
-	for _, v := range s.Sync {
-		fmt.Printf("Sources: %v %v atat\n", v.Source, v.Destinations)
-	}
+    for i := 0; i < len(s.Sync); i++ {
+    	// Add trailing slash to sources
+    	if !strings.HasSuffix(s.Sync[i].Source, "/") {
+    		s.Sync[i].Source = s.Sync[i].Source + "/"
+    	}
+
+    	// Add starting slash to sources
+    	if !strings.HasPrefix(s.Sync[i].Source, "/") {
+    		s.Sync[i].Source = "/" + s.Sync[i].Source
+    	}
+
+    	for j := 0; j < len(s.Sync[i].Destinations); j++ {
+    		// Add trailing slash to destinations
+    		if !strings.HasSuffix(s.Sync[i].Destinations[j], "/") {
+    			s.Sync[i].Destinations[j] = s.Sync[i].Destinations[j] + "/"
+    		}
+
+    		// Add beginning slash to destinations
+    		// Check if they are remote
+    		if strings.ContainsAny(s.Sync[i].Destinations[j], ":") && !strings.Contains(s.Sync[i].Destinations[j], ":/") {
+    			fmt.Println("A GASIT")
+    			s.Sync[i].Destinations[j] = strings.Replace(s.Sync[i].Destinations[j], ":", ":/", -1)
+    		} else if !strings.ContainsAny(s.Sync[i].Destinations[j], ":") && !strings.HasPrefix(s.Sync[i].Destinations[j], "/") {
+    			s.Sync[i].Destinations[j] = "/" + s.Sync[i].Destinations[j]
+    		}
+    	}
+
+    }
+
+    fmt.Printf("Sources: %v\n", s.Sync)
+
+	sources.syncInit()
 
 	return s
 }

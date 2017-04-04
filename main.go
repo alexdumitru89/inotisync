@@ -17,7 +17,7 @@ var (
     dirs []string
     source string
     mode string
-    remote bool 
+    remote bool
     dest string
     sources Sources
     configFile string = "/home/go/inotisync/src/inotisync.conf"
@@ -32,6 +32,30 @@ type Sources struct {
 type Sync struct { 
 	Source string
 	Destinations []string
+}
+
+func (s Sources) syncInit() {
+	for i := 0; i < len(s.Sync); i++ {
+		for j := 0; j < len(s.Sync[i].Destinations); j++ {	
+			// Check if destination is remote or not
+			// Check for the existence of the ":" character
+			if strings.ContainsAny(s.Sync[i].Destinations[j], ":") {
+				_, err := exec.Command("rsync", "-avzS", s.Sync[i].Source, s.Sync[i].Destinations[j]).Output()
+				if(err != nil) {
+	                fmt.Println("Can't copy")
+	                fmt.Println(err)
+	            }
+	        } else {
+	        	cmd := exec.Command("/bin/sh", "-c", "cp -Rp " + s.Sync[i].Source + "*" + " " + s.Sync[i].Destinations[j])
+	        	stdoutErr, err := cmd.CombinedOutput()
+	        	if(err != nil) {
+	                fmt.Println("Can't copy")
+	                fmt.Println(err)
+	                fmt.Printf("%s\n", stdoutErr)
+	            }
+	        }
+		}
+	}
 }
 
 func Watcher() {
@@ -57,46 +81,61 @@ func Watcher() {
                 // Get file name
                 explode := strings.Split(event.Name, "/")
                 fileName := explode[len(explode) - 1]
-                fmt.Println("outside looped")
                 // Loop through destinations
                 for _, dest := range sources.Sync[ctr].Destinations {
-                	fmt.Println("looped")
                 	destPath := strings.Replace(event.Name, sources.Sync[ctr].Source, dest, -1)
                 	destDir = strings.Replace(destPath, fileName, "", -1)
 
                 	// File or folder has been deleted
                 	if event.Op&fsnotify.Remove == fsnotify.Remove || event.Op&fsnotify.Rename == fsnotify.Rename {
-                		err := os.Remove(destPath)
-                		check("Can't delete " + destPath + "\n", err)
+                		if(!isRemoteDestination(destPath)) {
+	                		err := os.Remove(destPath)
+	                		check("Can't delete " + destPath + "\n", err)
+	                	}
                 	// File or folder has been created, modified
                 	} else {
-                		file, err := os.Stat(event.Name)
-                		checkFatal(err)
+                		// Local destination. Use CP
+                		if(!isRemoteDestination(destPath)) {
+                			destPath = destPath + "/"
+                			fmt.Println("Event: ", event.Name)
+                			fmt.Println("Dest: ", destPath)
 
-                		if file.Mode().IsDir() {
-		                    err = os.Mkdir(destPath, 0755)
-		                    check("Can't create directory\n", err)
-		                    err = watcher.Add(event.Name)
-		                    check("Can't add to watcher'n",err)
-		                } else {
+                			file, err := os.Stat(event.Name)
+                			checkFatal(err)
 
-		                    fmt.Println("Source: ", source, "Dest :", destPath, "Dest Dir: ", destDir)
+                			// Path is a directory
+	                		if file.Mode().IsDir() {
+			                    err = os.Mkdir(destPath, 0755)
+			                    check("Can't create directory\n", err)
+			                    err = watcher.Add(event.Name)
+			                    check("Can't add to watcher'n",err)
+			                // Path is a file
+			                } else {
 
-		                    err = os.MkdirAll(destDir, 0755)
-		                    check("Can't create directories'n", err)
-		                    _, err := exec.Command("/bin/cp", "-p", event.Name, destPath).Output()
-		                    if(err != nil) {
-		                        fmt.Println("Can't copy")
+			                    fmt.Println("Source: ", source, "Dest :", destPath, "Dest Dir: ", destDir)
+
+			                    err = os.MkdirAll(destDir, 0755)
+			                    check("Can't create directories'n", err)
+			                    _, err := exec.Command("/bin/cp", "-p", event.Name, destPath).Output()
+			                    if(err != nil) {
+			                        fmt.Println("Can't copy")
+			                        fmt.Println(err)
+			                    }
+
+			                    if(err != nil) {
+			                        fmt.Println("N-a mers sa copiez: ", err)
+			                    }
+			                }
+			            // Remote destination. Use rsync
+                		} else {
+                			_, err := exec.Command("rsync", "-avzS", event.Name, destPath).Output()
+                			fmt.Println("rsync!")
+                			if(err != nil) {
+		                        fmt.Println("Rsync error")
 		                        fmt.Println(err)
 		                    }
-
-		                    if(err != nil) {
-		                        fmt.Println("N-a mers sa copiez: ", err)
-		                    }
-		                }
+                		}	
                 	}
-                
-                
             	}
 		        case err := <-watcher.Errors:
 		            log.Println("error:", err)
@@ -110,6 +149,13 @@ func Watcher() {
     }
     check("Can't add to watcher\n", err)
     <-done
+}
+
+func isRemoteDestination(destPath string) bool {
+	if strings.ContainsAny(destPath, ":") {
+		return true
+	}
+	return false
 }
 
 // Obsolete
