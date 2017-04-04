@@ -3,31 +3,35 @@ import (
 "log"
 //"encoding/json"
 "github.com/fsnotify/fsnotify"
-"io/ioutil"
+
 "fmt"
 "os"
 "strings"
 "os/exec"
 "bufio"
-"github.com/BurntSushi/toml"
 "bytes"
-)
+) 
 
 var (
     explode []int
     dirs []string
     source string
     mode string
-    remote bool
+    remote bool 
     dest string
-    configFile string = "/home/go/inotisync/inotisync.conf"
+    sources Sources
+    configFile string = "/home/go/inotisync/src/inotisync.conf"
+    ctr int
+    destDir string
 )
 
-type Config struct {
-    Source []string
-    Dest []string
-    Remote bool
-    Mode string
+type Sources struct {
+	Sync []Sync
+}
+
+type Sync struct { 
+	Source string
+	Destinations []string
 }
 
 func Watcher() {
@@ -41,61 +45,63 @@ func Watcher() {
     go func() {
         for {
             select {
-            case event := <-watcher.Events:
-                // Reset destination directory
-                destDir := ""
+            	case event := <-watcher.Events:
+
+            	// Find which [sync] the file belongs to
+            	for i:= 0; i < len(sources.Sync); i++ {
+					if strings.HasPrefix(event.Name, sources.Sync[i].Source) {
+						ctr = i
+					}
+				}
 
                 // Get file name
                 explode := strings.Split(event.Name, "/")
                 fileName := explode[len(explode) - 1]
+                fmt.Println("outside looped")
+                // Loop through destinations
+                for _, dest := range sources.Sync[ctr].Destinations {
+                	fmt.Println("looped")
+                	destPath := strings.Replace(event.Name, sources.Sync[ctr].Source, dest, -1)
+                	destDir = strings.Replace(destPath, fileName, "", -1)
 
-                // Get final destination path and destination directory
-                destPath := strings.Replace(event.Name, source, dest, -1)
-                destDir = strings.Replace(destPath, fileName, "", -1)
+                	// File or folder has been deleted
+                	if event.Op&fsnotify.Remove == fsnotify.Remove || event.Op&fsnotify.Rename == fsnotify.Rename {
+                		err := os.Remove(destPath)
+                		check("Can't delete " + destPath + "\n", err)
+                	// File or folder has been created, modified
+                	} else {
+                		file, err := os.Stat(event.Name)
+                		checkFatal(err)
 
-                // If a file/folder has been deleted
-                if event.Op&fsnotify.Remove == fsnotify.Remove || event.Op&fsnotify.Rename == fsnotify.Rename {
-                err := os.Remove(destPath)
-                check("Can't delete " + destPath + "\n", err)
+                		if file.Mode().IsDir() {
+		                    err = os.Mkdir(destPath, 0755)
+		                    check("Can't create directory\n", err)
+		                    err = watcher.Add(event.Name)
+		                    check("Can't add to watcher'n",err)
+		                } else {
 
-                // Any other case (create, write, chmod)
-                } else {
+		                    fmt.Println("Source: ", source, "Dest :", destPath, "Dest Dir: ", destDir)
 
-                log.Println("event:", event)
+		                    err = os.MkdirAll(destDir, 0755)
+		                    check("Can't create directories'n", err)
+		                    _, err := exec.Command("/bin/cp", "-p", event.Name, destPath).Output()
+		                    if(err != nil) {
+		                        fmt.Println("Can't copy")
+		                        fmt.Println(err)
+		                    }
 
-                log.Println("modified file:", event.Name)
-
-                file, err := os.Stat(event.Name)
-                checkFatal(err)
-
-                // If modified file is a directory
-                if file.Mode().IsDir() {
-                    err = os.Mkdir(destPath, 0755)
-                    check("Can't create directory\n", err)
-                    err = watcher.Add(event.Name)
-                    check("Can't add to watcher'n",err)
-                } else {
-
-                    fmt.Println("Source: ", source, "Dest :", destPath, "Dest Dir: ", destDir)
-
-                    err = os.MkdirAll(destDir, 0755)
-                    check("Can't create directories'n", err)
-                    out, err := exec.Command("/bin/cp", "-p", event.Name, destPath).Output()
-                    if(err != nil) {
-                        fmt.Println("err: ", err)
-                    } else {
-                        fmt.Println("good: ", out)
-                    }
-
-                    if(err != nil) {
-                        fmt.Println("N-a mers sa copiez: ", err)
-                    }
-                }
-            }
-        case err := <-watcher.Errors:
-            log.Println("error:", err)
-        }
-    }
+		                    if(err != nil) {
+		                        fmt.Println("N-a mers sa copiez: ", err)
+		                    }
+		                }
+                	}
+                
+                
+            	}
+		        case err := <-watcher.Errors:
+		            log.Println("error:", err)
+		    }
+    	}
     }()
 
     dirs, err := readLines("dirs")
@@ -106,42 +112,82 @@ func Watcher() {
     <-done
 }
 
-func findSourceDirs() []string {
+// Obsolete
+// func findSourceDirs() []string {
 
-	// Check if source path exists and is a directory
-	file, err := os.Stat(source)
-	if(err != nil) {
-		fmt.Println("Directory doesn't exist. Attempting to create now")
-		err = os.Mkdir(source, 0755)
+// 	// Check if source path exists and is a directory
+// 	file, err := os.Stat(source)
+// 	if(err != nil) {
+// 		fmt.Println("Directory doesn't exist. Attempting to create now")
+// 		err = os.Mkdir(source, 0755)
+// 		if(err != nil) {
+// 			panic(err)
+// 		}
+// 	} else if(file.Mode().IsRegular()) {
+// 		panic("Source path is not a directory. It's a regular file.")
+// 	}
+
+
+//     cmd := exec.Command("find", source, "-type", "d")
+//     var out bytes.Buffer
+// 	var stderr bytes.Buffer
+// 	cmd.Stdout = &out
+// 	cmd.Stderr = &stderr
+//     err = cmd.Run()
+
+//     if(err != nil) {
+//         log.Fatal(fmt.Sprint(err) + ": " + stderr.String())
+//     }
+
+//     f, err := os.Create("dirs")
+//     checkFatal(err)
+
+//     _, err = f.Write(out.Bytes())
+//     checkFatal(err)
+
+
+//     return nil
+
+// }
+
+func (s Sources) findSources() {
+
+	f, err := os.Create("dirs")
+    checkFatal(err)
+    err = f.Truncate(0)
+
+	for _, v := range s.Sync {
+
+		file, err := os.Stat(v.Source)
+
+		if(err != nil) {
+			fmt.Println("Directory doesn't exist. Attempting to create now")
+			err = os.Mkdir(source, 0755)
+		}
+
 		if(err != nil) {
 			panic(err)
+		} else if(file.Mode().IsRegular()) {
+			panic("Source path is not a directory. It's a regular file.")
 		}
-	} else if(file.Mode().IsRegular()) {
-		panic("Source path is not a directory. It's a regular file.")
-	}
 
+		fmt.Println("Looking for directories in ", v.Source)
+		cmd := exec.Command("find", v.Source, "-type", "d")
+	    var out bytes.Buffer
+		var stderr bytes.Buffer
+		cmd.Stdout = &out
+		cmd.Stderr = &stderr
+	    err = cmd.Run()
 
-    cmd := exec.Command("find", source, "-type", "d")
-    var out bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &stderr
-    err = cmd.Run()
+	    if(err != nil) {
+	        log.Fatal(fmt.Sprint(err) + ": " + stderr.String())
+	    }
 
-    if(err != nil) {
-        log.Fatal(fmt.Sprint(err) + ": " + stderr.String())
-    }
-
-    f, err := os.Create("dirs")
-    checkFatal(err)
-
-    _, err = f.Write(out.Bytes())
-    checkFatal(err)
-
-
-    return nil
-
+	    _, err = f.Write(out.Bytes())
+    	checkFatal(err)
+	} 
 }
+
 
 func readLines(path string) ([]string, error) {
     file, err := os.Open(path)
@@ -173,33 +219,11 @@ func writeLines(lines []string, path string) error {
 }
 
 
-func readConf() {
-	var c Config
-
-	config, err := ioutil.ReadFile(configFile)
-	conf := string(config)
-
-	if(err != nil) {
-        panic("Couldn't open config file or the file is missing.");
-    }
-
-	if _, err := toml.Decode(conf, &c); err != nil {
-        panic("Config file might be corrupt.")
-    }
-
-
-
-	source = c.Source[0]
-	dest = c.Dest[0]
-	mode = c.Mode
-	remote = c.Remote
-}
-
  
 
 
 func main() {
-	readConf()
-    findSourceDirs()
+	sources.readConf()
+    sources.findSources()
     Watcher()
 }
