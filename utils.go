@@ -1,6 +1,5 @@
 package main
 import (
-	"fmt"
 	"log"
 	"github.com/BurntSushi/toml"
 	"io/ioutil"
@@ -9,7 +8,7 @@ import (
 
 func check(m string, e error) {
     if e != nil {
-        fmt.Println(m, e)
+        log.Println(m, e)
     }
 }
  
@@ -54,7 +53,7 @@ func (s *Sources) readConf() *Sources {
     		// Add beginning slash to destinations
     		// Check if they are remote
     		if strings.ContainsAny(s.Sync[i].Destinations[j], ":") && !strings.Contains(s.Sync[i].Destinations[j], ":/") {
-    			fmt.Println("A GASIT")
+    			log.Println("A GASIT")
     			s.Sync[i].Destinations[j] = strings.Replace(s.Sync[i].Destinations[j], ":", ":/", -1)
     		} else if !strings.ContainsAny(s.Sync[i].Destinations[j], ":") && !strings.HasPrefix(s.Sync[i].Destinations[j], "/") {
     			s.Sync[i].Destinations[j] = "/" + s.Sync[i].Destinations[j]
@@ -63,7 +62,7 @@ func (s *Sources) readConf() *Sources {
 
     }
 
-    fmt.Printf("Sources: %v\n", s.Sync)
+    log.Println("Sources: ", s.Sync)
 
 	sources.syncInit()
 

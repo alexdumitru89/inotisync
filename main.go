@@ -20,7 +20,8 @@ var (
     remote bool
     dest string
     sources Sources
-    configFile string = "/home/go/inotisync/src/inotisync.conf"
+    configFile string = "/etc/inotisync/inotisync.conf"
+    logFile = "/var/log/inotisync.log"
     ctr int
     destDir string
 )
@@ -41,17 +42,14 @@ func (s Sources) syncInit() {
 			// Check for the existence of the ":" character
 			if strings.ContainsAny(s.Sync[i].Destinations[j], ":") {
 				_, err := exec.Command("rsync", "-avzS", s.Sync[i].Source, s.Sync[i].Destinations[j]).Output()
-				if(err != nil) {
-	                fmt.Println("Can't copy")
-	                fmt.Println(err)
-	            }
+				check("Can't copy", err)
 	        } else {
 	        	cmd := exec.Command("/bin/sh", "-c", "cp -Rp " + s.Sync[i].Source + "*" + " " + s.Sync[i].Destinations[j])
 	        	stdoutErr, err := cmd.CombinedOutput()
 	        	if(err != nil) {
-	                fmt.Println("Can't copy")
-	                fmt.Println(err)
-	                fmt.Printf("%s\n", stdoutErr)
+	                log.Println("Can't copy")
+	                log.Println(err)
+	                log.Printf("%s\n", stdoutErr)
 	            }
 	        }
 		}
@@ -96,9 +94,9 @@ func Watcher() {
                 	} else {
                 		// Local destination. Use CP
                 		if(!isRemoteDestination(destPath)) {
-                			destPath = destPath + "/"
-                			fmt.Println("Event: ", event.Name)
-                			fmt.Println("Dest: ", destPath)
+                			//destPath = destPath + "/"
+                			log.Println("Event: ", event.Name)
+                			log.Println("Dest: ", destPath)
 
                 			file, err := os.Stat(event.Name)
                 			checkFatal(err)
@@ -112,27 +110,24 @@ func Watcher() {
 			                // Path is a file
 			                } else {
 
-			                    fmt.Println("Source: ", source, "Dest :", destPath, "Dest Dir: ", destDir)
+			                    log.Println("Source: ", source, "Dest :", destPath, "Dest Dir: ", destDir)
 
 			                    err = os.MkdirAll(destDir, 0755)
 			                    check("Can't create directories'n", err)
 			                    _, err := exec.Command("/bin/cp", "-p", event.Name, destPath).Output()
 			                    if(err != nil) {
-			                        fmt.Println("Can't copy")
-			                        fmt.Println(err)
+			                        log.Println("Can't copy")
+			                        log.Println(err)
 			                    }
 
-			                    if(err != nil) {
-			                        fmt.Println("N-a mers sa copiez: ", err)
-			                    }
 			                }
 			            // Remote destination. Use rsync
                 		} else {
                 			_, err := exec.Command("rsync", "-avzS", event.Name, destPath).Output()
-                			fmt.Println("rsync!")
+                			log.Println("rsync!")
                 			if(err != nil) {
-		                        fmt.Println("Rsync error")
-		                        fmt.Println(err)
+		                        log.Println("Rsync error")
+		                        log.Println(err)
 		                    }
                 		}	
                 	}
@@ -268,7 +263,15 @@ func writeLines(lines []string, path string) error {
  
 
 
-func main() {
+func main() { 
+	f, err := os.OpenFile(logFile, os.O_RDWR | os.O_CREATE | os.O_APPEND, 0666)
+    if err != nil {
+        log.Fatal("Cannot open file: %v", err)
+    }
+    defer f.Close()
+    log.SetOutput(f)
+
+
 	sources.readConf()
     sources.findSources()
     Watcher()
