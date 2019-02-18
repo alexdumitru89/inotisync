@@ -40,7 +40,7 @@ func (s *Sources) readConf() *Sources {
     	}
 
     	// Add starting slash to sources
-    	if !strings.HasPrefix(s.Sync[i].Source, "/") {
+    	if !strings.HasPrefix(s.Sync[i].Source, "/") && strings.ContainsAny(s.Sync[i].Destinations[j], ":") {
     		s.Sync[i].Source = "/" + s.Sync[i].Source
     	}
 
