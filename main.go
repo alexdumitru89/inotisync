@@ -124,7 +124,7 @@ func Watcher() {
 			            // Remote destination. Use rsync
                 		} else {
                 			_, err := exec.Command("rsync", "-avzS", event.Name, destPath).Output()
-                			log.Println("rsync!")
+                			log.Println("Doing rsync:", event.Name, destPath)
                 			if(err != nil) {
 		                        log.Println("Rsync error")
 		                        log.Println(err)
